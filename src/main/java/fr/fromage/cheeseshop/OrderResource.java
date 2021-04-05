@@ -1,5 +1,7 @@
 package fr.fromage.cheeseshop;
 
+import io.smallrye.mutiny.Uni;
+
 import javax.validation.Valid;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -17,18 +19,18 @@ public class OrderResource {
     }
 
     @GET
-    public List<Order> allOrders() {
+    public Uni<List<Order>> allOrders() {
         return Order.listAll();
     }
 
     @POST
-    public Order create(@Valid CreateOrderRequest createOrderRequest) {
+    public Uni<Order> create(@Valid CreateOrderRequest createOrderRequest) {
         return orderService.order(createOrderRequest);
     }
 
     @Path("cancel/{orderId}")
     @POST
-    public Order cancel(@PathParam("orderId") Long orderId) {
+    public Uni<Order> cancel(@PathParam("orderId") Long orderId) {
         return orderService.cancel(orderId);
     }
 }

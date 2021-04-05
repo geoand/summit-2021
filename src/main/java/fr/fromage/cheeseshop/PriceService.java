@@ -1,5 +1,6 @@
 package fr.fromage.cheeseshop;
 
+import io.smallrye.mutiny.Uni;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 import javax.inject.Singleton;
@@ -13,7 +14,7 @@ public class PriceService {
         this.bitcoinPrice = bitcoinPrice;
     }
 
-    public double priceInBitcoin(Cheese type) {
+    public Uni<Double> priceInBitcoin(Cheese type) {
         return bitcoinPrice.get("USD", type.getDollarPrice());
     }
 

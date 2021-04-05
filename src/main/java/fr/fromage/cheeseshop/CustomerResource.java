@@ -1,5 +1,7 @@
 package fr.fromage.cheeseshop;
 
+import io.smallrye.mutiny.Uni;
+
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import java.util.List;
@@ -8,7 +10,7 @@ import java.util.List;
 public class CustomerResource {
 
     @GET
-    public List<Customer> findAll() {
+    public Uni<List<Customer>> findAll() {
         return Customer.listAll();
     }
 }

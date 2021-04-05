@@ -1,65 +1,54 @@
 package fr.fromage.cheeseshop;
 
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerRecord;
+import io.quarkus.hibernate.reactive.panache.Panache;
+import io.smallrye.mutiny.Uni;
+import io.smallrye.reactive.messaging.kafka.Record;
+import org.eclipse.microprofile.reactive.messaging.Channel;
+import org.eclipse.microprofile.reactive.messaging.Emitter;
 
 import javax.inject.Singleton;
-import javax.transaction.Transactional;
 import java.time.LocalDateTime;
-import java.util.concurrent.TimeUnit;
 
 @Singleton
 public class OrderService {
 
-    private final KafkaProducer<Long, Order> kafkaProducer;
+    private final Emitter<Record<Long, Order>> kafkaProducer;
     private final PriceService priceService;
 
-    public OrderService(KafkaProducer<Long, Order> kafkaProducer, PriceService priceService) {
+    public OrderService(@Channel("cheese-orders") Emitter<Record<Long, Order>> kafkaProducer, PriceService priceService) {
         this.kafkaProducer = kafkaProducer;
         this.priceService = priceService;
     }
 
-    @Transactional
-    public Order order(CreateOrderRequest createOrderRequest) {
+    public Uni<Order> order(CreateOrderRequest createOrderRequest) {
         Long customerId = createOrderRequest.getCustomerId();
-        Customer customer = Customer.findById(customerId);
-        if (customer == null) {
-            throw new Exceptions.NoCustomerFound(customerId);
-        }
-        Order order = toOrder(createOrderRequest, customer);
-        Order.persist(order);
-
-        sendToKafka(order);
-
-        return order;
+        Uni<Customer> customer = Customer.findById(customerId);
+        return customer.onItem().ifNull().failWith(new Exceptions.NoCustomerFound(customerId))
+                .onItem().ifNotNull().transformToUni(c -> toOrder(createOrderRequest, c))
+                .onItem()
+                .call(o -> Panache.withTransaction(() -> Order.persist(o)))
+                .call(o -> Uni.createFrom().completionStage(kafkaProducer.send(Record.of(o.id, o))));
     }
 
-    private void sendToKafka(Order order) {
-        try {
-            kafkaProducer.send(new ProducerRecord<>("cheese-orders", order.id, order)).get(5, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            throw new Exceptions.KafkaException(e);
-        }
+    private Uni<Order> toOrder(CreateOrderRequest createOrderRequest, Customer customer) {
+        return priceService.priceInBitcoin(createOrderRequest.getType()).onItem().transform(p -> {
+            Order order = new Order();
+            order.customer = customer;
+            order.type = createOrderRequest.getType();
+            order.count = createOrderRequest.getCount();
+            order.timestamp = LocalDateTime.now();
+            order.status = Order.Status.Submitted;
+            order.princeInBitcoins = p * createOrderRequest.getCount();
+            return order;
+        });
     }
 
-    private Order toOrder(CreateOrderRequest createOrderRequest, Customer customer) {
-        Order order = new Order();
-        order.customer = customer;
-        order.type = createOrderRequest.getType();
-        order.count = createOrderRequest.getCount();
-        order.timestamp = LocalDateTime.now();
-        order.status = Order.Status.Submitted;
-        order.princeInBitcoins = priceService.priceInBitcoin(createOrderRequest.getType()) * createOrderRequest.getCount();
-        return order;
-    }
-
-    @Transactional
-    public Order cancel(Long orderId) {
-        Order order = Order.findById(orderId);
-        if (order == null) {
-            throw new Exceptions.NoOrderFound(orderId);
-        }
-        order.status = Order.Status.Canceled;
-        return order;
+    public Uni<Order> cancel(Long orderId) {
+        Uni<Order> order = Order.findById(orderId);
+        return order.onItem().ifNull().failWith(new Exceptions.NoOrderFound(orderId))
+             .onItem().ifNotNull().call(o -> Panache.withTransaction(() -> {
+            o.status = Order.Status.Canceled;
+            return Order.persist(o);
+        }));
     }
 }

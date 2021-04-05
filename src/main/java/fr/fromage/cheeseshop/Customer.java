@@ -1,7 +1,7 @@
 package fr.fromage.cheeseshop;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import io.quarkus.hibernate.orm.panache.PanacheEntity;
+import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
