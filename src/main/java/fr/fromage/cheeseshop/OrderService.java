@@ -8,14 +8,15 @@ import org.eclipse.microprofile.reactive.messaging.Emitter;
 
 import javax.inject.Singleton;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Singleton
 public class OrderService {
 
-    private final Emitter<Record<Long, Order>> kafkaProducer;
+    private final Emitter<Record<UUID, Order>> kafkaProducer;
     private final PriceService priceService;
 
-    public OrderService(@Channel("cheese-orders") Emitter<Record<Long, Order>> kafkaProducer, PriceService priceService) {
+    public OrderService(@Channel("cheese-orders") Emitter<Record<UUID, Order>> kafkaProducer, PriceService priceService) {
         this.kafkaProducer = kafkaProducer;
         this.priceService = priceService;
     }
@@ -33,6 +34,7 @@ public class OrderService {
     private Uni<Order> toOrder(CreateOrderRequest createOrderRequest, Customer customer) {
         return priceService.priceInBitcoin(createOrderRequest.getType()).onItem().transform(p -> {
             Order order = new Order();
+            order.id = UUID.randomUUID();
             order.customer = customer;
             order.type = createOrderRequest.getType();
             order.count = createOrderRequest.getCount();
@@ -43,7 +45,7 @@ public class OrderService {
         });
     }
 
-    public Uni<Order> cancel(Long orderId) {
+    public Uni<Order> cancel(UUID orderId) {
         Uni<Order> order = Order.findById(orderId);
         return order.onItem().ifNull().failWith(new Exceptions.NoOrderFound(orderId))
              .onItem().ifNotNull().call(o -> Panache.withTransaction(() -> {

@@ -8,6 +8,7 @@ import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import java.util.List;
+import java.util.UUID;
 
 @Path("order")
 public class OrderResource {
@@ -30,7 +31,7 @@ public class OrderResource {
 
     @Path("cancel/{orderId}")
     @POST
-    public Uni<Order> cancel(@PathParam("orderId") Long orderId) {
-        return orderService.cancel(orderId);
+    public Uni<Order> cancel(@PathParam("orderId") String orderId) {
+        return orderService.cancel(UUID.fromString(orderId));
     }
 }
