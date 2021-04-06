@@ -2,9 +2,10 @@ package fr.fromage.cheeseshop;
 
 import io.quarkus.hibernate.reactive.panache.Panache;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.reactive.messaging.MutinyEmitter;
 import io.smallrye.reactive.messaging.kafka.Record;
 import org.eclipse.microprofile.reactive.messaging.Channel;
-import org.eclipse.microprofile.reactive.messaging.Emitter;
+import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 import javax.inject.Singleton;
 import java.time.LocalDateTime;
@@ -13,12 +14,12 @@ import java.util.UUID;
 @Singleton
 public class OrderService {
 
-    private final Emitter<Record<UUID, Order>> kafkaProducer;
-    private final PriceService priceService;
+    private final MutinyEmitter<Record<UUID, Order>> kafkaProducer;
+    private final BitcoinPrice bitcoinPrice;
 
-    public OrderService(@Channel("cheese-orders") Emitter<Record<UUID, Order>> kafkaProducer, PriceService priceService) {
+    public OrderService(@Channel("cheese-orders") MutinyEmitter<Record<UUID, Order>> kafkaProducer, @RestClient BitcoinPrice bitcoinPrice) {
         this.kafkaProducer = kafkaProducer;
-        this.priceService = priceService;
+        this.bitcoinPrice = bitcoinPrice;
     }
 
     public Uni<Order> order(CreateOrderRequest createOrderRequest) {
@@ -27,12 +28,12 @@ public class OrderService {
         return customer.onItem().ifNull().failWith(new Exceptions.NoCustomerFound(customerId))
                 .onItem().ifNotNull().transformToUni(c -> toOrder(createOrderRequest, c))
                 .onItem()
-                .call(o -> Panache.withTransaction(() -> Order.persist(o)))
-                .call(o -> Uni.createFrom().completionStage(kafkaProducer.send(Record.of(o.id, o))));
+                .call(o -> Panache.withTransaction(o::persist))
+                .call(o -> kafkaProducer.send(Record.of(o.id, o)));
     }
 
     private Uni<Order> toOrder(CreateOrderRequest createOrderRequest, Customer customer) {
-        return priceService.priceInBitcoin(createOrderRequest.getType()).onItem().transform(p -> {
+        return bitcoinPrice.get("USD", createOrderRequest.getType().getDollarPrice()).onItem().transform(p -> {
             Order order = new Order();
             order.id = UUID.randomUUID();
             order.customer = customer;
